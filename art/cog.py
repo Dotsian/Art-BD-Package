@@ -1,3 +1,4 @@
+import asyncio
 import os
 from typing import TYPE_CHECKING
 
@@ -28,6 +29,11 @@ class ArtCog(commands.Cog):
         threads = [x.name for x in channel.threads]
         threads_created = 0
 
+        await ctx.send(
+            "Generating threads...\n"
+            "-# This may take a while depending on the amount of collectibles you have."
+        )
+
         for ball in await Ball.filter(enabled=True):
             if ball.country in threads:
                 continue
@@ -39,5 +45,7 @@ class ArtCog(commands.Cog):
             )
 
             threads_created += 1
+
+            await asyncio.sleep(1)
 
         await ctx.send(f"Created `{threads_created}` threads")
