@@ -37,7 +37,9 @@ class ArtCog(commands.Cog):
         )
 
         for thread in channel.threads:
-            thread_artwork_path = thread.starter_message.attachments[0].filename
+            thread_message = await thread.fetch_message(thread.id)
+
+            thread_artwork_path = thread_message.attachments[0].filename
             ball_artwork_path = await Ball.get(country=thread.name).values_list(
                 "wild_card", flat=True
             )
@@ -48,7 +50,7 @@ class ArtCog(commands.Cog):
                 continue
 
             try:
-                await thread.starter_message.edit(attachments=[
+                await thread_message.edit(attachments=[
                     discord.File(FILE_PREFIX + ball_artwork_path)
                 ])
             except Exception as error:
