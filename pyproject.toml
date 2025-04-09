@@ -4,7 +4,7 @@ version = "0.0.1"
 authors = [
   { name="DotZZ", email="official.dotzz@gmail.com" },
 ]
-description = "Lorem ipsum dolar sit amet"
+description = "The BallsDex art package is a custom package developed by `dot_zz` on Discord that simulates Ballsdex's art revamp acception system in their official servers."
 readme = "README.md"
 requires-python = ">=3.12"
 classifiers = [

@@ -1,10 +1,13 @@
 import asyncio
 import os
+import re
 from dataclasses import dataclass
+from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
 import discord
+from discord import app_commands
 from discord.ext import commands
 
 from ballsdex.core.models import Ball
@@ -13,6 +16,7 @@ if TYPE_CHECKING:
     from ballsdex.core.bot import BallsDexBot
 
 STATIC = os.path.isdir("static")
+
 FILE_PREFIX = "." if STATIC else ""
 FILENAME_RE = re.compile(r"^(.+)(\.\S+)$")
 
@@ -42,6 +46,10 @@ async def save_file(attachment: discord.Attachment) -> Path:
 
     return path.relative_to("./admin_panel/media/")
 
+class ArtType(Enum):
+    SPAWN = "spawn"
+    CARD = "card"
+
 @dataclass
 class MessageLink:
     bot: Any
@@ -59,22 +67,53 @@ class MessageLink:
 
         return self.message
 
-class ArtCog(commands.Cog):
+class Art(commands.GroupCog):
+    """
+    Art management commands.
+    """
+
     def __init__(self, bot: "BallsDexBot"):
         self.bot = bot
 
-    @commands.command()
-    @commands.is_owner()
-    async def updateart(self, ctx: commands.Context, channel: discord.ForumChannel):
-        """
-        If a countryball's spawn art is outdated in the specified forum channel, 
-        it will automatically be updated to match the current spawn artwork.
+    spawn = app_commands.Group(name="spawn", description="Spawn art management")
+    card = app_commands.Group(name="card", description="Card art management")
 
-        Parameters
-        ----------
-        channel: discord.ForumChannel
-            The channel you want to update the spawn art in.
-        """
+    async def _create(
+        self, interaction: discord.interaction, channel: discord.ForumChannel, art: ArtType
+    ):
+        threads_created = 0
+        existing_threads = {x.name for x in channel.threads}
+
+        await ctx.send(
+            "Generating threads...\n"
+            "-# This may take a while depending on the amount of collectibles you have."
+        )
+
+        balls = await Ball.filter(enabled=True)
+
+        for ball in balls:
+            if ball.country in existing_threads:
+                continue
+
+            attribute = ball.wild_card if art == ArtType.SPAWN else ball.collection_card
+
+            try:
+                await channel.create_thread(
+                    name=ball.country, file=discord.File(FILE_PREFIX + attribute)
+                )
+            except Exception as error:
+                await ctx.send(f"Failed to create `{ball.country}`\n```\n{error}\n```")
+                await ctx.send("Continuing...")
+
+                continue
+
+            threads_created += 1
+
+        await ctx.send(f"Created `{threads_created}` threads")
+
+    async def _update(
+        self, interaction: discord.interaction, channel: discord.ForumChannel, art: ArtType
+    ):
         threads_updated = 0
 
         await ctx.send(
@@ -82,12 +121,14 @@ class ArtCog(commands.Cog):
             "-# This may take a while depending on the amount of collectibles you updated."
         )
 
+        attribute = "wild_card" if art == ArtType.SPAWN else "collection_card"
+
         for thread in channel.threads:
             thread_message = await thread.fetch_message(thread.id)
 
             thread_artwork_path = thread_message.attachments[0].filename
             ball_artwork_path = await Ball.get_or_none(country=thread.name).values_list(
-                "wild_card", flat=True
+                attribute, flat=True
             )
 
             if ball_artwork_path is None:
@@ -111,79 +152,30 @@ class ArtCog(commands.Cog):
 
             threads_updated += 1
 
-            await asyncio.sleep(0.75)
-
         await ctx.send(f"Updated `{threads_updated}` threads")
 
-    @commands.command()
-    @commands.is_owner()
-    async def spawnart(self, ctx: commands.Context, channel: discord.ForumChannel):
-        """
-        Generates a list of all countryball's spawn arts in a specific forum channel.
-
-        Parameters
-        ----------
-        channel: discord.ForumChannel
-            The channel you want to generate the spawn art in.
-        """
-        threads_created = 0
-        existing_threads = {x.name for x in channel.threads}
-
-        await ctx.send(
-            "Generating threads...\n"
-            "-# This may take a while depending on the amount of collectibles you have."
-        )
-
-        balls = await Ball.filter(enabled=True)
-
-        for ball in balls:
-            if ball.country in existing_threads:
-                continue
-
-            try:
-                await channel.create_thread(
-                    name=ball.country, file=discord.File(FILE_PREFIX + ball.wild_card)
-                )
-            except Exception as error:
-                await ctx.send(f"Failed to create `{ball.country}`\n```\n{error}\n```")
-                await ctx.send("Continuing...")
-
-                continue
-
-            threads_created += 1
-
-        await ctx.send(f"Created `{threads_created}` threads")
-
-    @commands.command()
-    @commands.is_owner()
-    async def acceptart(
-        self, ctx: commands.Context, link: str, index: int = 1
+    async def _accept(
+        self, interaction: discord.interaction, art: ArtType, link: str, index: int = 1
     ):
-        """
-        Accepts spawn art in a thread.
-
-        Parameters
-        ----------
-        link: str
-            The messsage link containing the art.
-        index: int
-            The attachment you want to use, identified by its index.
-        """
         index = index - 1
         message_link = MessageLink(self.bot)
 
         try:
             message = await message_link.from_link(link)
         except Exception as error:
-            await ctx.send(
-                f"An error occured while trying to retrieve the message.\n```{error}```"
+            await interaction.response.send_message(
+                f"An error occured while trying to retrieve the message.\n```{error}```",
+                ephemeral=True
             )
             return
 
+        thread_message = await message_link.thread.fetch_message(message_link.thread.id)
+
         if index > len(message.attachments) or index < 0:
-            await ctx.send(
+            await interaction.response.send_message(
                 f"There are only {len(message.attachments)} attachments; "
-                f"{index} is an invalid attachment number."
+                f"{index} is an invalid attachment number.",
+                ephemeral=True
             )
             return
 
@@ -197,11 +189,101 @@ class ArtCog(commands.Cog):
 
         path = await save_file(message.attachments[index])
 
-        ball.wild_card = f"/{path}"
+        if art == ArtType.SPAWN:
+            ball.wild_card = f"/{path}"
+        else:
+            ball.collection_card = f"/{path}"
 
-        await ball.save(update_fields=["wild_card"])
+        await ball.save(update_fields=["wild_card" if art == ArtType.SPAWN else "collection_card"])
 
-        await ctx.send(
-            f"Accepted {ball.country} art made by **{message.author.name}**",
-            file=discord.File(f"./{path}")
+        art_file = discord.File(
+            FILE_PREFIX + ball.wild_card if art == ArtType.SPAWN else ball.collection_card
         )
+
+        await thread_message.edit(attachments=[art_file])
+
+        await interaction.response.send_message(
+            f"Accepted {ball.country} art made by **{message.author.name}**", file=art_file
+        )
+
+    @spawn.command(name="create")
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    async def spawn_create(self, interaction: discord.Interaction, channel: discord.ForumChannel):
+        """
+        Generates a thread per countryball containing its spawn art in a specific forum.
+
+        Parameters
+        ----------
+        channel: discord.ForumChannel
+            The channel you want to generate the spawn art in.
+        """
+        await self._create(interaction, channel, ArtType.SPAWN)
+
+    @card.command(name="create")
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    async def card_create(self, interaction: discord.Interaction, channel: discord.ForumChannel):
+        """
+        Generates a thread per countryball containing its card art in a specific forum.
+
+        Parameters
+        ----------
+        channel: discord.ForumChannel
+            The channel you want to generate the card art in.
+        """
+        await self._create(interaction, channel, ArtType.CARD)
+
+    @spawn.command(name="update")
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    async def spawn_update(self, interaction: discord.Interaction, channel: discord.ForumChannel):
+        """
+        Updates all outdated countryball spawn art in a specified forum.
+
+        Parameters
+        ----------
+        channel: discord.ForumChannel
+            The channel you want to update the spawn art in.
+        """
+        await self._update(interaction, channel, ArtType.SPAWN)
+
+    @card.command(name="update")
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    async def card_update(self, ctx: commands.Context, channel: discord.ForumChannel):
+        """
+        Updates all outdated countryball card art in a specified forum.
+
+        Parameters
+        ----------
+        channel: discord.ForumChannel
+            The channel you want to update the card art in.
+        """
+        await self._update(interaction, channel, ArtType.CARD)
+
+    @spawn.command(name="accept")
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    async def spawn_accept(self, interaction: discord.Interaction, link: str, index: int = 1):
+        """
+        Accepts a countryball's spawn art in a thread using a message link.
+
+        Parameters
+        ----------
+        link: str
+            The messsage link containing the spawn art.
+        index: int
+            The attachment you want to use, identified by its index.
+        """
+        await self._accept(interaction, ArtType.SPAWN, link, index)
+
+    @card.command(name="accept")
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    async def card_accept(self, interaction: discord.Interaction, link: str, index: int = 1):
+        """
+        Accepts a countryball's card art in a thread using a message link.
+
+        Parameters
+        ----------
+        link: str
+            The messsage link containing the card art.
+        index: int
+            The attachment you want to use, identified by its index.
+        """
+        await self._accept(interaction, ArtType.CARD, link, index)
