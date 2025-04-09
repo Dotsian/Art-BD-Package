@@ -14,6 +14,7 @@ if TYPE_CHECKING:
 
 STATIC = os.path.isdir("static")
 FILE_PREFIX = "." if STATIC else ""
+FILENAME_RE = re.compile(r"^(.+)(\.\S+)$")
 
 async def save_file(attachment: discord.Attachment) -> Path:
     path_name = "./admin_panel/media"
@@ -54,7 +55,7 @@ class MessageLink:
 
         self.guild = self.bot.get_guild(int(parsed_link[4]))
         self.thread = self.guild.get_thread(int(parsed_link[5]))
-        self.message = await thread.fetch_message(int(parsed_link[6]))
+        self.message = await self.thread.fetch_message(int(parsed_link[6]))
 
         return self.message
 
@@ -156,14 +157,14 @@ class ArtCog(commands.Cog):
     @commands.command()
     @commands.is_owner()
     async def acceptart(
-        self, ctx: commands.Context, message_link: str, index: int = 1
+        self, ctx: commands.Context, link: str, index: int = 1
     ):
         """
         Accepts spawn art in a thread.
 
         Parameters
         ----------
-        message_link: str
+        link: str
             The messsage link containing the art.
         index: int
             The attachment you want to use, identified by its index.
@@ -172,21 +173,21 @@ class ArtCog(commands.Cog):
         message_link = MessageLink(self.bot)
 
         try:
-            message = await message_link.from_link(message_link)
+            message = await message_link.from_link(link)
         except Exception as error:
             await ctx.send(
                 f"An error occured while trying to retrieve the message.\n```{error}```"
             )
             return
 
-        if index > len(message.attachment) or index < 0:
+        if index > len(message.attachments) or index < 0:
             await ctx.send(
                 f"There are only {len(message.attachments)} attachments; "
                 f"{index} is an invalid attachment number."
             )
             return
 
-        ball = await Ball.get_or_none(country=thread.name)
+        ball = await Ball.get_or_none(country=message_link.thread.name)
 
         if ball is None:
             await ctx.send(f"{ball.country} doesn't exist.")
