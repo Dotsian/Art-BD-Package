@@ -14,6 +14,32 @@ if TYPE_CHECKING:
 STATIC = os.path.isdir("static")
 FILE_PREFIX = "." if STATIC else ""
 
+async def save_file(attachment: discord.Attachment) -> Path:
+    path_name = "./admin_panel/media"
+
+    if STATIC:
+        path_name = './static/uploads'
+
+    path = Path(f"{path_name}/{attachment.filename}")
+
+    match = FILENAME_RE.match(attachment.filename)
+
+    if not match:
+        raise TypeError("The file you uploaded lacks an extension.")
+
+    i = 1
+
+    while path.exists():
+        path = Path(f"{path_name}/{match.group(1)}-{i}{match.group(2)}")
+        i = i + 1
+    
+    await attachment.save(path)
+
+    if STATIC:
+        return path
+
+    return path.relative_to("./admin_panel/media/")
+
 @dataclass
 class MessageLink:
     bot: Any
@@ -126,19 +152,22 @@ class ArtCog(commands.Cog):
 
         await ctx.send(f"Created `{threads_created}` threads")
 
+    @commands.command()
+    @commands.is_owner()
     async def acceptart(
-        self, ctx: commands.Context, message_link: str
+        self, ctx: commands.Context, message_link: str, index: int = 1
     ):
         """
         Accepts spawn art in a thread.
 
         Parameters
         ----------
-        channel: discord.ForumChannel
-            The channel that contains the art.
         message_link: str
             The messsage link containing the art.
+        index: int
+            The attachment you want to use, identified by its index.
         """
+        index = index - 1
         message_link = MessageLink(self.bot)
 
         try:
@@ -149,6 +178,13 @@ class ArtCog(commands.Cog):
             )
             return
 
+        if index > len(message.attachment) or index < 0:
+            await ctx.send(
+                f"There are only {len(message.attachments)} attachments; "
+                f"{index} is an invalid attachment number."
+            )
+            return
+
         ball = await Ball.get_or_none(country=thread.name)
 
         if ball is None:
@@ -156,3 +192,14 @@ class ArtCog(commands.Cog):
             return
 
         await message.add_reaction("✅")
+
+        path = await save_file(message.attachments[index])
+
+        ball.wild_card = f"/{path}"
+
+        await ball.save(update_fields=["wild_card"])
+
+        await ctx.send(
+            f"Accepted {ball.country} art made by **{message.author.name}**",
+            file=discord.File(f"./{path}")
+        )
