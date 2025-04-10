@@ -10,6 +10,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
+from ballsdex.settings import settings
 from ballsdex.core.models import Ball
 
 if TYPE_CHECKING:
@@ -84,7 +85,7 @@ class Art(commands.GroupCog):
         threads_created = 0
         existing_threads = {x.name for x in channel.threads}
 
-        await ctx.send(
+        await interaction.channel.send(
             "Generating threads...\n"
             "-# This may take a while depending on the amount of collectibles you have."
         )
@@ -102,21 +103,22 @@ class Art(commands.GroupCog):
                     name=ball.country, file=discord.File(FILE_PREFIX + attribute)
                 )
             except Exception as error:
-                await ctx.send(f"Failed to create `{ball.country}`\n```\n{error}\n```")
-                await ctx.send("Continuing...")
+                await interaction.channel.send(
+                    f"Failed to create `{ball.country}`\n```\n{error}\n```",
+                )
 
                 continue
 
             threads_created += 1
 
-        await ctx.send(f"Created `{threads_created}` threads")
+        await interaction.channel.send(f"Created `{threads_created}` threads")
 
     async def _update(
         self, interaction: discord.interaction, channel: discord.ForumChannel, art: ArtType
     ):
         threads_updated = 0
 
-        await ctx.send(
+        await interaction.channel.send(
             "Updating threads...\n"
             "-# This may take a while depending on the amount of collectibles you updated."
         )
@@ -132,7 +134,7 @@ class Art(commands.GroupCog):
             )
 
             if ball_artwork_path is None:
-                await ctx.send(f"Could not find {thread.name}")
+                await interaction.channel.send(f"Could not find {thread.name}")
                 continue
 
             prefix = "/static/uploads/" if STATIC else ""
@@ -145,14 +147,13 @@ class Art(commands.GroupCog):
                     discord.File(FILE_PREFIX + ball_artwork_path)
                 ])
             except Exception as error:
-                await ctx.send(f"Failed to update `{thread.name}`\n```\n{error}\n```")
-                await ctx.send("Continuing...")
+                await interaction.channel.send(f"Failed to update `{thread.name}`\n```\n{error}\n```")
 
                 continue
 
             threads_updated += 1
 
-        await ctx.send(f"Updated `{threads_updated}` threads")
+        await interaction.channel.send(f"Updated `{threads_updated}` threads")
 
     async def _accept(
         self, interaction: discord.interaction, art: ArtType, link: str, index: int = 1
@@ -182,7 +183,7 @@ class Art(commands.GroupCog):
         ball = await Ball.get_or_none(country=message_link.thread.name)
 
         if ball is None:
-            await ctx.send(f"{ball.country} doesn't exist.")
+            await interaction.response.send_message(f"{ball.country} doesn't exist.")
             return
 
         await message.add_reaction("✅")
@@ -247,7 +248,7 @@ class Art(commands.GroupCog):
 
     @card.command(name="update")
     @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
-    async def card_update(self, ctx: commands.Context, channel: discord.ForumChannel):
+    async def card_update(self, interaction: discord.Interaction, channel: discord.ForumChannel):
         """
         Updates all outdated countryball card art in a specified forum.
 
