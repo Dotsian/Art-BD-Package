@@ -198,7 +198,7 @@ class Art(commands.GroupCog):
         await ball.save(update_fields=["wild_card" if art == ArtType.SPAWN else "collection_card"])
 
         art_file = discord.File(
-            FILE_PREFIX + ball.wild_card if art == ArtType.SPAWN else ball.collection_card
+            FILE_PREFIX + (ball.wild_card if art == ArtType.SPAWN else ball.collection_card)
         )
 
         await thread_message.edit(attachments=[art_file])
