@@ -16,6 +16,9 @@ from ballsdex.core.models import Ball
 if TYPE_CHECKING:
     from ballsdex.core.bot import BallsDexBot
 
+# KEYWORDS: $ball, $user
+DM_MESSAGE = "Hi $user, your artwork for **$ball** has been accepted!"
+
 STATIC = os.path.isdir("static")
 
 FILE_PREFIX = "." if STATIC else ""
@@ -59,11 +62,19 @@ class MessageLink:
     thread: discord.Thread | None = None
     message: discord.Message | None = None
 
-    async def from_link(self, link: str):
+    async def from_link(self, link: str) -> discord.Message | None:
         parsed_link = link.split("/")
 
         self.guild = self.bot.get_guild(int(parsed_link[4]))
+
+        if self.guild is None:
+            return
+
         self.thread = self.guild.get_thread(int(parsed_link[5]))
+
+        if self.thread is None:
+            return
+
         self.message = await self.thread.fetch_message(int(parsed_link[6]))
 
         return self.message
@@ -74,16 +85,29 @@ class Art(commands.GroupCog):
     """
 
     def __init__(self, bot: "BallsDexBot"):
+        self.creating_threads = False
         self.bot = bot
 
     spawn = app_commands.Group(name="spawn", description="Spawn art management")
     card = app_commands.Group(name="card", description="Card art management")
 
     async def _create(
-        self, interaction: discord.interaction, channel: discord.ForumChannel, art: ArtType
+        self, interaction: discord.Interaction, channel: discord.ForumChannel, art: ArtType
     ):
+        if self.creating_threads:
+            await interaction.response.send_message(
+                "Thread generation is still ongoing!", ephemeral=True
+            )
+            return
+
+        self.creating_threads = True
+
         threads_created = 0
         existing_threads = {x.name for x in channel.threads}
+
+        await interaction.response.send_message(
+            "Starting thread generation!", ephemeral=True
+        )
 
         await interaction.channel.send(
             "Generating threads...\n"
@@ -99,9 +123,11 @@ class Art(commands.GroupCog):
             attribute = ball.wild_card if art == ArtType.SPAWN else ball.collection_card
 
             try:
-                await channel.create_thread(
+                thread = await channel.create_thread(
                     name=ball.country, file=discord.File(FILE_PREFIX + attribute)
                 )
+
+                await thread.message.pin()
             except Exception as error:
                 await interaction.channel.send(
                     f"Failed to create `{ball.country}`\n```\n{error}\n```",
@@ -111,12 +137,20 @@ class Art(commands.GroupCog):
 
             threads_created += 1
 
+            await asyncio.sleep(0.75)
+
+        self.creating_threads = False
+
         await interaction.channel.send(f"Created `{threads_created}` threads")
 
     async def _update(
-        self, interaction: discord.interaction, channel: discord.ForumChannel, art: ArtType
+        self, interaction: discord.Interaction, channel: discord.ForumChannel, art: ArtType
     ):
         threads_updated = 0
+
+        await interaction.response.send_message(
+            "Starting update process!", ephemeral=True
+        )
 
         await interaction.channel.send(
             "Updating threads...\n"
@@ -153,10 +187,12 @@ class Art(commands.GroupCog):
 
             threads_updated += 1
 
+            await asyncio.sleep(0.75)
+
         await interaction.channel.send(f"Updated `{threads_updated}` threads")
 
     async def _accept(
-        self, interaction: discord.interaction, art: ArtType, link: str, index: int = 1
+        self, interaction: discord.Interaction, art: ArtType, link: str, index: int = 1
     ):
         index = index - 1
         message_link = MessageLink(self.bot)
@@ -169,8 +205,20 @@ class Art(commands.GroupCog):
                 ephemeral=True
             )
             return
+        
+        if message_link.thread is None:
+            await interaction.response.send_message(
+                "Failed to fetch thread from message link.", ephemeral=True
+            )
+            return
 
         thread_message = await message_link.thread.fetch_message(message_link.thread.id)
+
+        if message is None:
+            await interaction.response.send_message(
+                "Failed to fetch thread message from message link.", ephemeral=True
+            )
+            return
 
         if index > len(message.attachments) or index < 0:
             await interaction.response.send_message(
@@ -183,8 +231,12 @@ class Art(commands.GroupCog):
         ball = await Ball.get_or_none(country=message_link.thread.name)
 
         if ball is None:
-            await interaction.response.send_message(f"{ball.country} doesn't exist.")
+            await interaction.response.send_message(
+                f"{ball.country} doesn't exist.", ephemeral=True
+            )
             return
+        
+        await interaction.response.defer()
 
         await message.add_reaction("✅")
 
@@ -197,14 +249,23 @@ class Art(commands.GroupCog):
 
         await ball.save(update_fields=["wild_card" if art == ArtType.SPAWN else "collection_card"])
 
-        art_file = discord.File(
-            FILE_PREFIX + (ball.wild_card if art == ArtType.SPAWN else ball.collection_card)
-        )
+        art_file = FILE_PREFIX + (ball.wild_card if art == ArtType.SPAWN else ball.collection_card)
 
-        await thread_message.edit(attachments=[art_file])
+        suffix_message = ""
 
-        await interaction.response.send_message(
-            f"Accepted {ball.country} art made by **{message.author.name}**", file=art_file
+        try:
+            await message.author.send(DM_MESSAGE
+                .replace("$ball", ball.country)
+                .replace("$user", message.author.display_name)
+            )
+        except Exception:
+            suffix_message = "\n-# Failed to DM user."
+
+        await thread_message.edit(attachments=[discord.File(art_file)])
+
+        await interaction.followup.send(
+            f"Accepted {ball.country} art made by **{message.author.name}**{suffix_message}",
+            file=discord.File(art_file)
         )
 
     @spawn.command(name="create")
@@ -218,7 +279,10 @@ class Art(commands.GroupCog):
         channel: discord.ForumChannel
             The channel you want to generate the spawn art in.
         """
-        await self._create(interaction, channel, ArtType.SPAWN)
+        try:
+            await self._create(interaction, channel, ArtType.SPAWN)
+        except Exception:
+            self.creating_threads = False
 
     @card.command(name="create")
     @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
@@ -231,7 +295,10 @@ class Art(commands.GroupCog):
         channel: discord.ForumChannel
             The channel you want to generate the card art in.
         """
-        await self._create(interaction, channel, ArtType.CARD)
+        try:
+            await self._create(interaction, channel, ArtType.CARD)
+        except Exception:
+            self.creating_threads = False
 
     @spawn.command(name="update")
     @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
