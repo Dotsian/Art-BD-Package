@@ -1,6 +1,6 @@
 # Ballsdex Art Package (BETA)
 
-The BallsDex art package is a custom package developed by `dot_zz` on Discord that simulates Ballsdex's art revamp acception system in their official servers.
+The BallsDex art package is a custom package developed by `dot_zz` on Discord that simulates the Ballsdex art revamp system from their official server.
 
 ## Installation
 
