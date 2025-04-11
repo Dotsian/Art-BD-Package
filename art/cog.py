@@ -21,7 +21,7 @@ DM_MESSAGE = "Hi $user, your artwork for **$ball** has been accepted!"
 
 STATIC = os.path.isdir("static")
 
-FILE_PREFIX = "." if STATIC else ""
+FILE_PREFIX = "." if STATIC else "./admin_panel/media/"
 FILENAME_RE = re.compile(r"^(.+)(\.\S+)$")
 
 async def save_file(attachment: discord.Attachment) -> Path:
