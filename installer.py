@@ -10,7 +10,6 @@ FILES = ["__init__.py", "cog.py"]
 
 os.makedirs(PATH, exist_ok=True)
 
-
 async def add_package(package: str):
     """
     Adds a package to the config.yml file.
@@ -37,7 +36,6 @@ async def add_package(package: str):
       file.writelines(lines)
 
     await ctx.send("Added package to config file")
-
 
 async def install_files():
     """
