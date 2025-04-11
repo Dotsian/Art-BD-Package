@@ -19,7 +19,7 @@ if TYPE_CHECKING:
 # KEYWORDS: $ball, $user
 DM_MESSAGE = "Hi $user, your artwork for **$ball** has been accepted!"
 
-STATIC = os.path.isdir("admin_panel/media")
+STATIC = not os.path.isdir("admin_panel/media")
 
 FILE_PREFIX = "." if STATIC else "./admin_panel/media/"
 FILENAME_RE = re.compile(r"^(.+)(\.\S+)$")
