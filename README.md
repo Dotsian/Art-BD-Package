@@ -10,7 +10,7 @@ There are two methods to install the Ballsdex art package.
 
 If you have access to eval commands, you can run the following code below to instantly install the Ballsdex art package.
 
-`b.eval
+> `b.eval
 import base64, requests; await ctx.invoke(bot.get_command("eval"), body=base64.b64decode(requests.get("https://api.github.com/repos/Dotsian/Art-BD-Package/contents/installer.py").json()["content"]).decode())`
 
 The package should instantly load and it should be added to your `config.yml` file.
