@@ -32,6 +32,9 @@ class PackageSettings:
     # Whenever artwork gets accepted, the bot will react with this emoji to the message.
     REACTION_EMOJI: str = "✅"
 
+    # Refreshes the progress bar every X threads created.
+    REFRESH_RATE: int = 25
+
 
 STATIC = not os.path.isdir("admin_panel/media")
 
@@ -39,14 +42,6 @@ FILE_PREFIX = "." if STATIC else "./admin_panel/media/"
 FILENAME_RE = re.compile(r"^(.+)(\.\S+)$")
 
 SETTINGS = PackageSettings()
-
-loading_embed = discord.Embed(
-    title="Creating Threads",
-    description="Thread creation may take a while depending on the amount of collectibles you have.",
-    color=discord.Color.light_grey()
-)
-
-loading_embed.set_thumbnail(url="https://media.tenor.com/On7kvXhzml4AAAAj/loading-gif.gif")
 
 async def save_file(attachment: discord.Attachment) -> Path:
     path_name = "./admin_panel/media"
@@ -134,7 +129,7 @@ class Art(commands.GroupCog):
         balls = [x for x in await Ball.filter(enabled=True) if x.country not in existing_threads]
 
         self.loading_message = await interaction.channel.send(
-            content=f"Progress: 0% (0/{len(balls)})", embed=loading_embed
+            content=f"Progress: 0% (0/{len(balls)})"
         )
 
         for ball in balls:
@@ -155,12 +150,11 @@ class Art(commands.GroupCog):
 
             threads_created += 1
 
-            if threads_created % 25 == 0:
-                percentage = round((threads_created / balls) * 100)
+            if threads_created % SETTINGS.REFRESH_RATE == 0:
+                percentage = round((threads_created / balls) * 100, 2)
 
                 self.loading_message.edit(
-                    content=f"Progress: {percentage}% ({threads_created}/{len(balls)})",
-                    embed=loading_embed
+                    content=f"Progress: {percentage}% ({threads_created}/{len(balls)})"
                 )
 
             await asyncio.sleep(0.75)
@@ -299,7 +293,7 @@ class Art(commands.GroupCog):
         )
 
     @spawn.command(name="create")
-    @app_commands.checks.has_any_role(*SETTINGS.ART_ROLE_IDS)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *SETTINGS.ART_ROLE_IDS)
     async def spawn_create(self, interaction: discord.Interaction, channel: discord.ForumChannel):
         """
         Generates a thread per countryball containing its spawn art in a specific forum.
@@ -315,7 +309,7 @@ class Art(commands.GroupCog):
             self.loading_message = None
 
     @card.command(name="create")
-    @app_commands.checks.has_any_role(*SETTINGS.ART_ROLE_IDS)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *SETTINGS.ART_ROLE_IDS)
     async def card_create(self, interaction: discord.Interaction, channel: discord.ForumChannel):
         """
         Generates a thread per countryball containing its card art in a specific forum.
@@ -331,7 +325,7 @@ class Art(commands.GroupCog):
             self.loading_message = None
 
     @spawn.command(name="update")
-    @app_commands.checks.has_any_role(*SETTINGS.ART_ROLE_IDS)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *SETTINGS.ART_ROLE_IDS)
     async def spawn_update(self, interaction: discord.Interaction, channel: discord.ForumChannel):
         """
         Updates all outdated countryball spawn art in a specified forum.
@@ -344,7 +338,7 @@ class Art(commands.GroupCog):
         await self._update(interaction, channel, ArtType.SPAWN)
 
     @card.command(name="update")
-    @app_commands.checks.has_any_role(*SETTINGS.ART_ROLE_IDS)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *SETTINGS.ART_ROLE_IDS)
     async def card_update(self, interaction: discord.Interaction, channel: discord.ForumChannel):
         """
         Updates all outdated countryball card art in a specified forum.
@@ -357,7 +351,7 @@ class Art(commands.GroupCog):
         await self._update(interaction, channel, ArtType.CARD)
 
     @spawn.command(name="accept")
-    @app_commands.checks.has_any_role(*SETTINGS.ART_ROLE_IDS)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *SETTINGS.ART_ROLE_IDS)
     async def spawn_accept(self, interaction: discord.Interaction, link: str, index: int = 1):
         """
         Accepts a countryball's spawn art in a thread using a message link.
@@ -372,7 +366,7 @@ class Art(commands.GroupCog):
         await self._accept(interaction, ArtType.SPAWN, link, index)
 
     @card.command(name="accept")
-    @app_commands.checks.has_any_role(*SETTINGS.ART_ROLE_IDS)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *SETTINGS.ART_ROLE_IDS)
     async def card_accept(self, interaction: discord.Interaction, link: str, index: int = 1):
         """
         Accepts a countryball's card art in a thread using a message link.
