@@ -26,7 +26,7 @@ To install the Ballsdex art package manually, follow the steps below:
 5. Add `ballsdex.packages.art` as an item in the `packages` section.
 6. Open Discord and type `b.reload art` and `b.reloadtree`
 
-After following those steps, your package should load.
+After following those steps, your package should load. If commands don't show, refresh your Discord.
 
 ## Customization
 
