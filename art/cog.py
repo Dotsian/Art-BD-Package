@@ -1,7 +1,8 @@
 import asyncio
 import os
 import re
-from dataclasses import dataclass
+import tomllib
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -16,21 +17,47 @@ from ballsdex.core.models import Ball
 if TYPE_CHECKING:
     from ballsdex.core.bot import BallsDexBot
 
-# KEYWORDS: $ball, $user
-DM_MESSAGE = "Hi $user, your artwork for **$ball** has been accepted!"
-
 STATIC = not os.path.isdir("admin_panel/media")
 
 FILE_PREFIX = "." if STATIC else "./admin_panel/media/"
 FILENAME_RE = re.compile(r"^(.+)(\.\S+)$")
 
+class PackageSettings:
+    """
+    Settings for the art package that can be accessed via the `config.toml` file.
+    """
+
+    def __init__(self, path):
+        with open(path, "rb") as f:
+            data = tomllib.load(f)
+
+        if data is None:
+            return
+
+        self.accepted_message = data.get(
+            "accepted-message", "Hi $user, your artwork for **$ball** has been accepted!"
+        )
+
+        self.art_role_ids = data.get("art-role-ids", [])
+        self.art_guilds = data.get("art-guilds", [])
+
+        self.accepted_emoji = data.get("accepted-emoji", "✅")
+        self.progress_rate = data.get("progress-rate", 25)
+
+        self.update_thread_art = data.get("update-thread-art", True)
+
+class ArtType(Enum):
+    SPAWN = "wild_card"
+    CARD = "collection_card"
+
+art_settings = PackageSettings(
+    Path(os.path.dirname(os.path.abspath(__file__)), "./config.toml")
+)
+
 async def save_file(attachment: discord.Attachment) -> Path:
-    path_name = "./admin_panel/media"
+    path_name = "static/uploads" if STATIC else "admin_panel/media"
 
-    if STATIC:
-        path_name = './static/uploads'
-
-    path = Path(f"{path_name}/{attachment.filename}")
+    path = Path(f"./{path_name}/{attachment.filename}")
 
     match = FILENAME_RE.match(attachment.filename)
 
@@ -40,53 +67,22 @@ async def save_file(attachment: discord.Attachment) -> Path:
     i = 1
 
     while path.exists():
-        path = Path(f"{path_name}/{match.group(1)}-{i}{match.group(2)}")
+        path = Path(f"./{path_name}/{match.group(1)}-{i}{match.group(2)}")
         i = i + 1
     
     await attachment.save(path)
 
-    if STATIC:
-        return path
-
     return path.relative_to("./admin_panel/media/")
 
-class ArtType(Enum):
-    SPAWN = "spawn"
-    CARD = "card"
-
-@dataclass
-class MessageLink:
-    bot: Any
-
-    guild: discord.Guild | None = None
-    thread: discord.Thread | None = None
-    message: discord.Message | None = None
-
-    async def from_link(self, link: str) -> discord.Message | None:
-        parsed_link = link.split("/")
-
-        self.guild = self.bot.get_guild(int(parsed_link[4]))
-
-        if self.guild is None:
-            return
-
-        self.thread = self.guild.get_thread(int(parsed_link[5]))
-
-        if self.thread is None:
-            return
-
-        self.message = await self.thread.fetch_message(int(parsed_link[6]))
-
-        return self.message
-
+@app_commands.guilds(*art_settings.art_guilds)
 class Art(commands.GroupCog):
     """
     Art management commands.
     """
 
     def __init__(self, bot: "BallsDexBot"):
-        self.creating_threads = False
         self.bot = bot
+        self.loading_message: discord.Message | None = None
 
     spawn = app_commands.Group(name="spawn", description="Spawn art management")
     card = app_commands.Group(name="card", description="Card art management")
@@ -94,32 +90,32 @@ class Art(commands.GroupCog):
     async def _create(
         self, interaction: discord.Interaction, channel: discord.ForumChannel, art: ArtType
     ):
-        if self.creating_threads:
+        if self.loading_message is not None:
             await interaction.response.send_message(
-                "Thread generation is still ongoing!", ephemeral=True
+                "Thread creation is still running!", ephemeral=True
             )
             return
-
-        self.creating_threads = True
-
+        
+        await interaction.response.defer(thinking=True)
+        
         threads_created = 0
         existing_threads = {x.name for x in channel.threads}
 
-        await interaction.response.send_message(
-            "Starting thread generation!", ephemeral=True
+        await interaction.followup.send(
+            "Starting thread creation!", ephemeral=True
         )
 
-        await interaction.channel.send(
-            "Generating threads...\n"
-            "-# This may take a while depending on the amount of collectibles you have."
+        balls = [x for x in await Ball.filter(enabled=True) if x.country not in existing_threads]
+        ball_length = len(balls)
+
+        self.loading_message = await interaction.channel.send(
+            f"Progress: 0% (0/{ball_length})"
         )
 
-        balls = await Ball.filter(enabled=True)
+        if self.loading_message is None:
+            return
 
         for ball in balls:
-            if ball.country in existing_threads:
-                continue
-
             attribute = ball.wild_card if art == ArtType.SPAWN else ball.collection_card
 
             try:
@@ -137,11 +133,17 @@ class Art(commands.GroupCog):
 
             threads_created += 1
 
+            if threads_created % art_settings.progress_rate == 0 or threads_created == ball_length:
+                percentage = round((threads_created / ball_length) * 100, 2)
+
+                await self.loading_message.edit(
+                    content=f"Progress: {percentage}% ({threads_created}/{ball_length})"
+                )
+
             await asyncio.sleep(0.75)
 
-        self.creating_threads = False
-
-        await interaction.channel.send(f"Created `{threads_created}` threads")
+        await interaction.channel.send(content=f"Finished! Created `{threads_created}` threads")
+        self.loading_message = None
 
     async def _update(
         self, interaction: discord.Interaction, channel: discord.ForumChannel, art: ArtType
@@ -194,25 +196,37 @@ class Art(commands.GroupCog):
     async def _accept(
         self, interaction: discord.Interaction, art: ArtType, link: str, index: int = 1
     ):
+        if not link.startswith("https://discord.com/channels/"):
+            await interaction.response.send("Invalid message link entered.", ephemeral=True)
+            return
+        
         index = index - 1
-        message_link = MessageLink(self.bot)
+        parsed_link = link.split("/")
+
+        guild = self.bot.get_guild(int(parsed_link[4]))
+
+        if guild is None:
+            await interaction.response.send_message(
+                f"Could not fetch guild from message link.", ephemeral=True
+            )
+            return
+
+        thread = guild.get_thread(int(parsed_link[5]))
+
+        if thread is None:
+            await interaction.response.send_message(
+                f"Could not fetch thread from message link.", ephemeral=True
+            )
+            return
 
         try:
-            message = await message_link.from_link(link)
+            message = await thread.fetch_message(int(parsed_link[6]))
         except Exception as error:
             await interaction.response.send_message(
                 f"An error occured while trying to retrieve the message.\n```{error}```",
                 ephemeral=True
             )
             return
-        
-        if message_link.thread is None:
-            await interaction.response.send_message(
-                "Failed to fetch thread from message link.", ephemeral=True
-            )
-            return
-
-        thread_message = await message_link.thread.fetch_message(message_link.thread.id)
 
         if message is None:
             await interaction.response.send_message(
@@ -228,7 +242,7 @@ class Art(commands.GroupCog):
             )
             return
 
-        ball = await Ball.get_or_none(country=message_link.thread.name)
+        ball = await Ball.get_or_none(country=thread.name)
 
         if ball is None:
             await interaction.response.send_message(
@@ -236,32 +250,32 @@ class Art(commands.GroupCog):
             )
             return
         
-        await interaction.response.defer()
+        await interaction.response.defer(thinking=True)
 
-        await message.add_reaction("✅")
+        await message.add_reaction(art_settings.accepted_emoji)
 
         path = await save_file(message.attachments[index])
 
-        if art == ArtType.SPAWN:
-            ball.wild_card = f"/{path}"
-        else:
-            ball.collection_card = f"/{path}"
+        setattr(ball, art.value, f"/{path}")
 
-        await ball.save(update_fields=["wild_card" if art == ArtType.SPAWN else "collection_card"])
+        await ball.save(update_fields=[art.value])
 
-        art_file = FILE_PREFIX + (ball.wild_card if art == ArtType.SPAWN else ball.collection_card)
+        art_file = FILE_PREFIX + getattr(ball, art.value)
 
         suffix_message = ""
 
         try:
-            await message.author.send(DM_MESSAGE
+            await message.author.send(art_settings.accepted_message
                 .replace("$ball", ball.country)
                 .replace("$user", message.author.display_name)
             )
         except Exception:
             suffix_message = "\n-# Failed to DM user."
 
-        await thread_message.edit(attachments=[discord.File(art_file)])
+        if settings.update_thread_art:
+            thread_message = await thread.fetch_message(thread.id)
+
+            await thread_message.edit(attachments=[discord.File(art_file)])
 
         await interaction.followup.send(
             f"Accepted {ball.country} art made by **{message.author.name}**{suffix_message}",
@@ -269,7 +283,7 @@ class Art(commands.GroupCog):
         )
 
     @spawn.command(name="create")
-    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *art_settings.art_role_ids)
     async def spawn_create(self, interaction: discord.Interaction, channel: discord.ForumChannel):
         """
         Generates a thread per countryball containing its spawn art in a specific forum.
@@ -282,10 +296,10 @@ class Art(commands.GroupCog):
         try:
             await self._create(interaction, channel, ArtType.SPAWN)
         except Exception:
-            self.creating_threads = False
+            self.loading_message = None
 
     @card.command(name="create")
-    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *art_settings.art_role_ids)
     async def card_create(self, interaction: discord.Interaction, channel: discord.ForumChannel):
         """
         Generates a thread per countryball containing its card art in a specific forum.
@@ -298,10 +312,10 @@ class Art(commands.GroupCog):
         try:
             await self._create(interaction, channel, ArtType.CARD)
         except Exception:
-            self.creating_threads = False
+            self.loading_message = None
 
     @spawn.command(name="update")
-    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *art_settings.art_role_ids)
     async def spawn_update(self, interaction: discord.Interaction, channel: discord.ForumChannel):
         """
         Updates all outdated countryball spawn art in a specified forum.
@@ -314,7 +328,7 @@ class Art(commands.GroupCog):
         await self._update(interaction, channel, ArtType.SPAWN)
 
     @card.command(name="update")
-    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *art_settings.art_role_ids)
     async def card_update(self, interaction: discord.Interaction, channel: discord.ForumChannel):
         """
         Updates all outdated countryball card art in a specified forum.
@@ -327,7 +341,7 @@ class Art(commands.GroupCog):
         await self._update(interaction, channel, ArtType.CARD)
 
     @spawn.command(name="accept")
-    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *art_settings.art_role_ids)
     async def spawn_accept(self, interaction: discord.Interaction, link: str, index: int = 1):
         """
         Accepts a countryball's spawn art in a thread using a message link.
@@ -342,7 +356,7 @@ class Art(commands.GroupCog):
         await self._accept(interaction, ArtType.SPAWN, link, index)
 
     @card.command(name="accept")
-    @app_commands.checks.has_any_role(*settings.root_role_ids, *settings.admin_role_ids)
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *art_settings.art_role_ids)
     async def card_accept(self, interaction: discord.Interaction, link: str, index: int = 1):
         """
         Accepts a countryball's card art in a thread using a message link.
@@ -355,3 +369,18 @@ class Art(commands.GroupCog):
             The attachment you want to use, identified by its index.
         """
         await self._accept(interaction, ArtType.CARD, link, index)
+
+    @spawn.command(name="accept")
+    @app_commands.checks.has_any_role(*settings.root_role_ids, *art_settings.art_role_ids)
+    async def spawn_accept(self, interaction: discord.Interaction, link: str, index: int = 1):
+        """
+        Accepts a countryball's spawn art in a thread using a message link.
+
+        Parameters
+        ----------
+        link: str
+            The messsage link containing the spawn art.
+        index: int
+            The attachment you want to use, identified by its index.
+        """
+        await self._accept(interaction, ArtType.SPAWN, link, index)
