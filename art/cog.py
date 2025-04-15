@@ -129,7 +129,7 @@ class Art(commands.GroupCog):
         balls = [x for x in await Ball.filter(enabled=True) if x.country not in existing_threads]
 
         self.loading_message = await interaction.channel.send(
-            content=f"Progress: 0% (0/{len(balls)})"
+            f"Progress: 0% (0/{len(balls)})"
         )
 
         for ball in balls:
