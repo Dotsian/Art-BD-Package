@@ -21,7 +21,7 @@ To install the Ballsdex art package manually, follow the steps below:
 
 1. Download all the files in the GitHub repository's `art` folder.
 2. Create a new folder in `ballsdex/packages` called `art`.
-3. Copy and paste the `__init__.py` and the `cog.py` files into the `art` folder.
+3. Copy and paste the `__init__.py`, `cog.py`, and `config.toml` files into the `art` folder.
 4. Open your `config.yml` file and go down to the `packages` section.
 5. Add `ballsdex.packages.art` as an item in the `packages` section.
 6. Open Discord and type `b.reload art` and `b.reloadtree`

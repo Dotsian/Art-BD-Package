@@ -78,4 +78,11 @@ async def install_files():
 await install_files()
 await add_package(PATH.replace("/", "."))
 
+try:
+    await bot.reload_extension(PATH.replace("/", "."))
+except commands.ExtensionNotLoaded:
+    await bot.load_extension(PATH.replace("/", "."))
+
+await bot.tree.sync()
+
 await ctx.send("Finished installing/updating everything!")
