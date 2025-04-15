@@ -41,7 +41,17 @@ async def install_files():
     """
     Installs and updates files from the GitHub page.
     """
+    progress_message = await ctx.send(
+        f"Installing files: 0% (0/{len(FILES)})"
+    )
+
+    log = []
+
     for index, file in enumerate(FILES):
+        if file == "config.toml" and os.path.isfile(f"{PATH}/config.toml"):
+            await ctx.send("`config.toml` file already found.")
+            continue
+        
         request = requests.get(f"https://api.github.com/repos/{GITHUB}/{file}")
 
         if request.status_code != requests.codes.ok:
@@ -54,7 +64,16 @@ async def install_files():
         with open(local_file_path, "w") as opened_file:
             opened_file.write(remote_content)
 
-        await ctx.send(f"Updated '{file}' ({index + 1}/{len(FILES)})")
+        log.append(f"-# Installed `{file}`")
+
+        await progress_message.edit(
+            content=(
+                f"Installing files: {index + 1 / len(FILES) * 100}% ({index + 1}/{len(FILES)})"
+                f"\n{'\n'.join(log)}"
+            )
+        )
+
+        await asyncio.sleep(1)
 
 await install_files()
 await add_package(PATH.replace("/", "."))
