@@ -6,7 +6,7 @@ import requests
 
 PATH = "ballsdex/packages/art"
 GITHUB = "Dotsian/Art-BD-Package/contents/art"
-FILES = ["__init__.py", "cog.py"]
+FILES = ["__init__.py", "cog.py", "config.toml"]
 
 os.makedirs(PATH, exist_ok=True)
 

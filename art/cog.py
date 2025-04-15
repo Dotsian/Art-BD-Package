@@ -1,7 +1,8 @@
 import asyncio
 import os
 import re
-from dataclasses import dataclass
+import tomllib
+from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -16,6 +17,8 @@ from ballsdex.core.models import Ball
 if TYPE_CHECKING:
     from ballsdex.core.bot import BallsDexBot
 
+CONFIG_PATH = Path(os.path.dirname(os.path.abspath(__file__)), "./config.toml")
+
 @dataclass
 class PackageSettings:
     """
@@ -27,7 +30,7 @@ class PackageSettings:
     DM_MESSAGE: str = "Hi $user, your artwork for **$ball** has been accepted!"
 
     # Anyone with these roles can accept art, create art threads, and update art threads.
-    ART_ROLE_IDS: list[int] = [0]
+    ART_ROLE_IDS: list[int] = field(default_factory=list)
 
     # Whenever artwork gets accepted, the bot will react with this emoji to the message.
     REACTION_EMOJI: str = "✅"
@@ -35,6 +38,17 @@ class PackageSettings:
     # Refreshes the progress bar every X threads created.
     REFRESH_RATE: int = 25
 
+    def load(self):
+        with open(CONFIG_PATH, "rb") as f:
+            data = tomllib.load(f)
+
+        if data is None:
+            return
+
+        self.DM_MESSAGE = data.get("accepted-message") # type: ignore
+        self.ART_ROLE_IDS = data.get("art-role-ids") # type: ignore
+        self.REACTION_EMOJI = data.get("accepted-emoji") # type: ignore
+        self.REFRESH_RATE = data.get("progress-refresh-rate") # type: ignore
 
 STATIC = not os.path.isdir("admin_panel/media")
 
@@ -42,6 +56,7 @@ FILE_PREFIX = "." if STATIC else "./admin_panel/media/"
 FILENAME_RE = re.compile(r"^(.+)(\.\S+)$")
 
 SETTINGS = PackageSettings()
+SETTINGS.load()
 
 async def save_file(attachment: discord.Attachment) -> Path:
     path_name = "./admin_panel/media"
@@ -119,18 +134,24 @@ class Art(commands.GroupCog):
             )
             return
         
+        await interaction.response.defer(thinking=True)
+        
         threads_created = 0
         existing_threads = {x.name for x in channel.threads}
 
-        await interaction.response.send_message(
+        await interaction.followup.send(
             "Starting thread creation!", ephemeral=True
         )
 
         balls = [x for x in await Ball.filter(enabled=True) if x.country not in existing_threads]
+        ball_length = len(balls)
 
         self.loading_message = await interaction.channel.send(
-            f"Progress: 0% (0/{len(balls)})"
+            f"Progress: 0% (0/{ball_length})"
         )
+
+        if self.loading_message is None:
+            return
 
         for ball in balls:
             attribute = ball.wild_card if art == ArtType.SPAWN else ball.collection_card
@@ -150,18 +171,17 @@ class Art(commands.GroupCog):
 
             threads_created += 1
 
-            if threads_created % SETTINGS.REFRESH_RATE == 0:
-                percentage = round((threads_created / balls) * 100, 2)
+            if threads_created % SETTINGS.REFRESH_RATE == 0 or threads_created == ball_length:
+                percentage = round((threads_created / ball_length) * 100, 2)
 
-                self.loading_message.edit(
-                    content=f"Progress: {percentage}% ({threads_created}/{len(balls)})"
+                await self.loading_message.edit(
+                    content=f"Progress: {percentage}% ({threads_created}/{ball_length})"
                 )
 
             await asyncio.sleep(0.75)
 
+        await interaction.channel.send(content=f"Finished! Created `{threads_created}` threads")
         self.loading_message = None
-
-        await interaction.channel.send(f"Created `{threads_created}` threads")
 
     async def _update(
         self, interaction: discord.Interaction, channel: discord.ForumChannel, art: ArtType
@@ -260,7 +280,7 @@ class Art(commands.GroupCog):
             )
             return
         
-        await interaction.response.defer()
+        await interaction.response.defer(thinking=True)
 
         await message.add_reaction(SETTINGS.REACTION_EMOJI)
 

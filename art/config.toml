@@ -1,0 +1,14 @@
+# The message that will be sent in DMs when a user's artwork is accepted.
+# KEYWORDS: $ball, $user
+accepted-message = "Hi $user, your artwork for **$ball** has been accepted!"
+
+# Anyone with these roles can accept art, create art threads, and update art threads.
+art-role-ids = [
+    1120405231029731350,
+]
+
+# Whenever artwork gets accepted, the bot will react with this emoji to the message.
+accepted-emoji = "✅"
+
+# Refreshes the progress bar every X threads created.
+progress-refresh-rate = 25
