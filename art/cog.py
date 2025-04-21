@@ -369,18 +369,3 @@ class Art(commands.GroupCog):
             The attachment you want to use, identified by its index.
         """
         await self._accept(interaction, ArtType.CARD, link, index)
-
-    @spawn.command(name="accept")
-    @app_commands.checks.has_any_role(*settings.root_role_ids, *art_settings.art_role_ids)
-    async def spawn_accept(self, interaction: discord.Interaction, link: str, index: int = 1):
-        """
-        Accepts a countryball's spawn art in a thread using a message link.
-
-        Parameters
-        ----------
-        link: str
-            The messsage link containing the spawn art.
-        index: int
-            The attachment you want to use, identified by its index.
-        """
-        await self._accept(interaction, ArtType.SPAWN, link, index)
