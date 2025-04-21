@@ -66,9 +66,11 @@ async def install_files():
 
         log.append(f"-# Installed `{file}`")
 
+        percentage = round(index + 1 / len(FILES) * 100)
+
         await progress_message.edit(
             content=(
-                f"Installing files: {index + 1 / len(FILES) * 100}% ({index + 1}/{len(FILES)})"
+                f"Installing files: {percentage}% ({index + 1}/{len(FILES)})"
                 f"\n{'\n'.join(log)}"
             )
         )
