@@ -2,10 +2,9 @@ import asyncio
 import os
 import re
 import tomllib
-from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING
 
 import discord
 from discord import app_commands
@@ -21,6 +20,10 @@ STATIC = not os.path.isdir("admin_panel/media")
 
 FILE_PREFIX = "." if STATIC else "./admin_panel/media/"
 FILENAME_RE = re.compile(r"^(.+)(\.\S+)$")
+
+class ArtType(Enum):
+    SPAWN = "wild_card"
+    CARD = "collection_card"
 
 class PackageSettings:
     """
@@ -45,10 +48,6 @@ class PackageSettings:
         self.progress_rate = data.get("progress-rate", 25)
 
         self.update_thread_art = data.get("update-thread-art", True)
-
-class ArtType(Enum):
-    SPAWN = "wild_card"
-    CARD = "collection_card"
 
 art_settings = PackageSettings(
     Path(os.path.dirname(os.path.abspath(__file__)), "./config.toml")
