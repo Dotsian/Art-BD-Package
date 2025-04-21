@@ -47,11 +47,11 @@ async def install_files():
 
     log = []
 
+    if os.path.isfile(f"{PATH}/config.toml"):
+       FILES.pop(FILES.index("config.toml"))
+       await ctx.send("`config.toml` file already found.")
+
     for index, file in enumerate(FILES):
-        if file == "config.toml" and os.path.isfile(f"{PATH}/config.toml"):
-            await ctx.send("`config.toml` file already found.")
-            continue
-        
         request = requests.get(f"https://api.github.com/repos/{GITHUB}/{file}")
 
         if request.status_code != requests.codes.ok:
@@ -66,7 +66,7 @@ async def install_files():
 
         log.append(f"-# Installed `{file}`")
 
-        percentage = round(index + 1 / len(FILES) * 100)
+        percentage = round((index + 1) / len(FILES) * 100)
 
         await progress_message.edit(
             content=(
