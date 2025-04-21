@@ -21,9 +21,19 @@ To install the Ballsdex art package manually, follow the steps below:
 
 1. Download all the files in the GitHub repository's `art` folder.
 2. Create a new folder in `ballsdex/packages` called `art`.
-3. Copy and paste the `__init__.py` and the `cog.py` files into the `art` folder.
+3. Copy and paste the `__init__.py`, `cog.py`, and `config.toml` files into the `art` folder.
 4. Open your `config.yml` file and go down to the `packages` section.
 5. Add `ballsdex.packages.art` as an item in the `packages` section.
 6. Open Discord and type `b.reload art` and `b.reloadtree`
 
-After following those steps, your package should load.
+After following those steps, your package should load. If commands don't show, refresh your Discord.
+
+## Customization
+
+The Ballsdex art package comes with a `config.toml` file that allows for easy customization. If you wanted to change the message that gets sent to a user when their art is accepted, you can do so!
+
+* `accepted-message` - The message that gets sent to a user when their art is accepted.
+* `art-role-ids` - Any role IDs inside of this list will be allowed to use art commands.
+* `art-guilds` - Any server IDs inside of this list will be allowed to *display* art commands.
+* `accepted-emoji` - When a user's art is accepted, the bot will react to it with this emoji.
+* `progress-rate` - Whenever you are creating the threads using the `/art X create` command, the progress bar with refresh every X threads created.
