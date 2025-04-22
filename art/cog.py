@@ -271,7 +271,7 @@ class Art(commands.GroupCog):
         except Exception:
             suffix_message = "\n-# Failed to DM user."
 
-        if settings.update_thread_art:
+        if art_settings.update_thread_art:
             thread_message = await thread.fetch_message(thread.id)
 
             await thread_message.edit(attachments=[discord.File(art_file)])
