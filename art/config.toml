@@ -9,6 +9,9 @@ art-role-ids = []
 # The server IDs where art commands can work.
 art-guilds = []
 
+# Threads, identified by their IDs, excluded from deletion when the `create` command is invoked.
+safe-threads = []
+
 # Whenever artwork gets accepted, the bot will react with this emoji to the message.
 accepted-emoji = "✅"
 
@@ -17,3 +20,6 @@ progress-rate = 25
 
 # Whether to update a thread's art after getting accepted.
 update-thread-art = true
+
+# Whether you want to cache threads per ForumChannel.
+thread-caching = true

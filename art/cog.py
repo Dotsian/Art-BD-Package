@@ -44,10 +44,13 @@ class PackageSettings:
         self.art_role_ids = data.get("art-role-ids", [])
         self.art_guilds = data.get("art-guilds", [])
 
+        self.safe_threads = data.get("safe_threads", [])
+
         self.accepted_emoji = data.get("accepted-emoji", "✅")
         self.progress_rate = data.get("progress-rate", 25)
 
         self.update_thread_art = data.get("update-thread-art", True)
+        self.cache_threads = data.get("cache-threads", True)
 
 art_settings = PackageSettings(
     Path(os.path.dirname(os.path.abspath(__file__)), "./config.toml")
@@ -73,6 +76,12 @@ async def save_file(attachment: discord.Attachment) -> Path:
 
     return path.relative_to("./admin_panel/media/")
 
+async def fetch_threads(channel: discord.ForumChannel) -> set[discord.Thread]:
+    existing_threads = {thread.name for thread in channel.threads}
+    archived_threads = {thread.name async for thread in channel.archived_threads(limit=None)}
+
+    return existing_threads | archived_threads
+
 @app_commands.guilds(*art_settings.art_guilds)
 class Art(commands.GroupCog):
     """
@@ -82,29 +91,57 @@ class Art(commands.GroupCog):
     def __init__(self, bot: "BallsDexBot"):
         self.bot = bot
         self.loading_message: discord.Message | None = None
+        self.cached_threads = {}
 
     spawn = app_commands.Group(name="spawn", description="Spawn art management")
     card = app_commands.Group(name="card", description="Card art management")
+
+    @commands.Cog.listener()
+    async def on_command(self, ctx):
+        if ctx.command.name != "reloadcache" or not art_settings.cache_threads:
+            return
+        
+        self.cached_threads = {}
+
+    async def fetch_cached_threads(self, channel: discord.ForumChannel) -> set[discord.Thread]:
+        if not art_settings.cache_threads:
+            return await fetch_threads(channel)
+        
+        if self.cached_threads[channel.id] is None:
+            self.cached_threads[channel.id] = await fetch_threads(channel)
+
+        return self.cached_threads[channel.id]
 
     async def _create(
         self, interaction: discord.Interaction, channel: discord.ForumChannel, art: ArtType
     ):
         if self.loading_message is not None:
             await interaction.response.send_message(
-                "Thread creation is still running!", ephemeral=True
+                "A thread process is still running!", ephemeral=True
             )
             return
         
         await interaction.response.defer(thinking=True)
+
+        ball_names = await Ball.filter(enabled=True).values_list("country", flat=True)
         
         threads_created = 0
-        existing_threads = {x.name for x in channel.threads}
+        existing_threads = await self.fetch_cached_threads(channel)
+
+        deleted_threads = [thread for thread in existing_threads if thread not in ball_names]
+
+        for thread in deleted_threads:
+            if thread.name in art_settings.safe_threads:
+                continue
+
+            await thread.delete()
 
         await interaction.followup.send(
             "Starting thread creation!", ephemeral=True
         )
 
-        balls = [x for x in await Ball.filter(enabled=True) if x.country not in existing_threads]
+        balls = await Ball.filter(enabled=True)
+        balls = [x for x in balls if x.country not in existing_threads]
         ball_length = len(balls)
 
         self.loading_message = await interaction.channel.send(
@@ -136,7 +173,7 @@ class Art(commands.GroupCog):
                 percentage = round((threads_created / ball_length) * 100, 2)
 
                 await self.loading_message.edit(
-                    content=f"Progress: {percentage}% ({threads_created}/{ball_length})"
+                    content=f"Creation Progress: {percentage}% ({threads_created}/{ball_length})"
                 )
 
             await asyncio.sleep(0.75)
@@ -160,7 +197,7 @@ class Art(commands.GroupCog):
 
         attribute = "wild_card" if art == ArtType.SPAWN else "collection_card"
 
-        for thread in channel.threads:
+        for thread in await self.fetch_cached_threads(channel):
             thread_message = await thread.fetch_message(thread.id)
 
             thread_artwork_path = thread_message.attachments[0].filename
