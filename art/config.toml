@@ -22,4 +22,4 @@ progress-rate = 25
 update-thread-art = true
 
 # Whether you want to cache threads per ForumChannel.
-thread-caching = true
+cache-threads = true

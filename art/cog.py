@@ -173,7 +173,7 @@ class Art(commands.GroupCog):
                 percentage = round((threads_created / ball_length) * 100, 2)
 
                 await self.loading_message.edit(
-                    content=f"Creation Progress: {percentage}% ({threads_created}/{ball_length})"
+                    content=f"Progress: {percentage}% ({threads_created}/{ball_length})"
                 )
 
             await asyncio.sleep(0.75)

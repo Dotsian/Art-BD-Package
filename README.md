@@ -38,3 +38,5 @@ The Ballsdex art package comes with a `config.toml` file that allows for easy cu
 * `safe-threads` - Any thread IDs inside of this list will prevent the thread from being deleted when running the art update command.
 * `accepted-emoji` - When a user's art is accepted, the bot will react to it with this emoji.
 * `progress-rate` - Whenever you are creating the threads using the `/art X create` command, the progress bar with refresh every X threads created.
+* `update-thread-art` - Whether you want to update the displayed art inside of a ball thread.
+* `cache-threads` - Whether you want to cache threads per ForumChannel (Improves create and update time).
