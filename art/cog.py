@@ -77,8 +77,16 @@ async def save_file(attachment: discord.Attachment) -> Path:
     return path.relative_to("./admin_panel/media/")
 
 async def fetch_threads(channel: discord.ForumChannel) -> set[discord.Thread]:
-    existing_threads = {thread.name for thread in channel.threads}
-    archived_threads = {thread.name async for thread in channel.archived_threads(limit=None)}
+    """
+    Fetches both archived threads and unarchived threads and returns a set of them.
+
+    Parameters
+    ----------
+    channel: discord.ForumChannel
+        The channel you want to retrieve the threads from.
+    """
+    existing_threads = {thread for thread in channel.threads}
+    archived_threads = {thread async for thread in channel.archived_threads(limit=None)}
 
     return existing_threads | archived_threads
 
@@ -107,7 +115,7 @@ class Art(commands.GroupCog):
         if not art_settings.cache_threads:
             return await fetch_threads(channel)
         
-        if self.cached_threads[channel.id] is None:
+        if channel.id not in self.cached_threads:
             self.cached_threads[channel.id] = await fetch_threads(channel)
 
         return self.cached_threads[channel.id]
@@ -126,9 +134,11 @@ class Art(commands.GroupCog):
         ball_names = await Ball.filter(enabled=True).values_list("country", flat=True)
         
         threads_created = 0
-        existing_threads = await self.fetch_cached_threads(channel)
 
-        deleted_threads = [thread for thread in existing_threads if thread not in ball_names]
+        existing_threads = await self.fetch_cached_threads(channel)
+        existing_thread_names = {x.name for x in existing_threads}
+
+        deleted_threads = [thread for thread in existing_threads if thread.name not in ball_names]
 
         for thread in deleted_threads:
             if thread.name in art_settings.safe_threads:
@@ -141,7 +151,7 @@ class Art(commands.GroupCog):
         )
 
         balls = await Ball.filter(enabled=True)
-        balls = [x for x in balls if x.country not in existing_threads]
+        balls = [x for x in balls if x.country not in existing_thread_names]
         ball_length = len(balls)
 
         self.loading_message = await interaction.channel.send(
@@ -197,7 +207,9 @@ class Art(commands.GroupCog):
 
         attribute = "wild_card" if art == ArtType.SPAWN else "collection_card"
 
-        for thread in await self.fetch_cached_threads(channel):
+        threads = await self.fetch_cached_threads(channel)
+
+        for thread in threads:
             thread_message = await thread.fetch_message(thread.id)
 
             thread_artwork_path = thread_message.attachments[0].filename
@@ -215,6 +227,9 @@ class Art(commands.GroupCog):
                 continue
 
             try:
+                if thread.archived:
+                    await thread.edit(archived=False)
+                
                 await thread_message.edit(attachments=[
                     discord.File(FILE_PREFIX + ball_artwork_path)
                 ])
@@ -233,7 +248,9 @@ class Art(commands.GroupCog):
         self, interaction: discord.Interaction, art: ArtType, link: str, index: int = 1
     ):
         if not link.startswith("https://discord.com/channels/"):
-            await interaction.response.send("Invalid message link entered.", ephemeral=True)
+            await interaction.response.send_message(
+                "Invalid message link entered.", ephemeral=True
+            )
             return
         
         index = index - 1
@@ -405,4 +422,3 @@ class Art(commands.GroupCog):
             The attachment you want to use, identified by its index.
         """
         await self._accept(interaction, ArtType.CARD, link, index)
-

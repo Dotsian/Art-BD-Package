@@ -1,6 +1,6 @@
 # Ballsdex Art Package (BETA)
 
-The BallsDex art package is a custom package developed by `dot_zz` on Discord that simulates the old Ballsdex art revamp system from their official server.
+The BallsDex art package (v0.2) is a custom package developed by `dot_zz` on Discord that simulates the old Ballsdex art revamp system from their official server.
 
 ## Installation
 
@@ -35,7 +35,7 @@ The Ballsdex art package comes with a `config.toml` file that allows for easy cu
 * `accepted-message` - The message that gets sent to a user when their art is accepted.
 * `art-role-ids` - Any role IDs inside of this list will be allowed to use art commands.
 * `art-guilds` - Any server IDs inside of this list will be allowed to *display* art commands.
-* `safe-threads` - Any thread IDs inside of this list will prevent the thread from being deleted when running the art update command.
+* `safe-threads` - Any thread IDs inside of this list will prevent the thread from being deleted when running the art create command.
 * `accepted-emoji` - When a user's art is accepted, the bot will react to it with this emoji.
 * `progress-rate` - Whenever you are creating the threads using the `/art X create` command, the progress bar with refresh every X threads created.
 * `update-thread-art` - Whether you want to update the displayed art inside of a ball thread.
